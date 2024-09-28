@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="3d31d110-e129-4706-9fab-7c94f8e1c984" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="dc81fcf5-5cc3-4030-b2cc-ae92c5349291" >
+		<db:my-sql-connection host="localhost" port="3306" user="root" password="Root@12345" database="onboard" />
+	</db:config>
+	<sub-flow name="group-by-group" doc:id="fa1765bd-4b31-4ce7-ba0e-60da6c649a1a" >
+		<ee:transform doc:name="Prepare Employee Records" doc:id="a3ab6237-d11d-4b24-adaf-c007542ea17b">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="employeePayload"><![CDATA[%dw 2.0
+output application/java
+---
+payload  map (item,index) -> {
+
+	empID: item.emp_id,
+	empName: item.emp_name,
+	empStatus: item.emp_status,
+	empExperience: item.emp_exp,
+	empSalary: (item.emp_salary + (item.emp_salary * item.emp_appr_per)/100),
+	empDesignation: item.emp_desig,
+	empAge: item.emp_age,
+	empYear: item.emp_appr_year,
+	empAppr: item.emp_appr_per
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		<db:bulk-insert doc:name="Bulk insert into backup_emp-table" doc:id="051b5ba6-45cb-43d2-9a68-413f0e3841c1" config-ref="Database_Config">
+				<db:bulk-input-parameters><![CDATA[#[vars.employeePayload]]]></db:bulk-input-parameters>
+				<db:sql><![CDATA[insert into onboard.emp_backup
+(emp_id,
+emp_name,
+emp_status,
+emp_exp,
+emp_salary,
+emp_desig,
+emp_age,
+emp_appr_year,
+emp_appr_per) values (:empID, :empName,:empStatus,:empExperience,:empSalary,:empDesignation,:empAge,:empYear,:empAppr)]]></db:sql>
+			</db:bulk-insert>
+		<db:bulk-update doc:name="Bulk update" doc:id="7ca63d8a-40c0-420a-a823-4832745d78e2" config-ref="Database_Config">
+				<db:bulk-input-parameters><![CDATA[#[vars.employeePayload]]]></db:bulk-input-parameters>
+				<db:sql><![CDATA[update onboard.emp_fin_master set emp_salary = :empSalary where emp_id = :empID]]></db:sql>
+			</db:bulk-update>
+	</sub-flow>
+	<sub-flow name="record-by-record" doc:id="7e2f90ba-e3e2-4f3f-b50d-92c309453d5a" >
+		<ee:transform doc:name="Prepare Employee Records" doc:id="12f6dbdd-fc1d-4d84-b441-6d6dc2cb0e04">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="employeePayload"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	empID: payload.emp_id,
+	empName: payload.emp_name,
+	empStatus: payload.emp_status,
+	empExperience: payload.emp_exp,
+	empSalary: (payload.emp_salary + (payload.emp_salary * payload.emp_appr_per)/100),
+	empDesignation: payload.emp_desig,
+	empAge: payload.emp_age,
+	empYear: payload.emp_appr_year,
+	empAppr: payload.emp_appr_per
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		<db:insert doc:name="Insert into backup_emp-table" doc:id="a37ec37b-bc4e-4549-b6b7-0a7f2f09ddd2" config-ref="Database_Config">
+				<db:sql><![CDATA[insert into onboard.emp_backup
+(emp_id,
+emp_name,
+emp_status,
+emp_exp,
+emp_salary,
+emp_desig,
+emp_age,
+emp_appr_year,
+emp_appr_per) values (:empID, :empName,:empStatus,:empExperience,:empSalary,:empDesignation,:empAge,:empYear,:empAppr)]]></db:sql>
+				<db:input-parameters><![CDATA[#[vars.employeePayload]]]></db:input-parameters>
+			</db:insert>
+		<db:update doc:name="Update" doc:id="49775b7a-83e9-452b-ad64-a1227bb7e44a" config-ref="Database_Config">
+				<db:sql><![CDATA[update onboard.emp_fin_master set emp_salary = :empSalary where emp_id = :empID]]></db:sql>
+				<db:input-parameters><![CDATA[#[vars.employeePayload]]]></db:input-parameters>
+			</db:update>
+	</sub-flow>
+	<flow name="batch-demoFlow" doc:id="19322f76-307b-45b5-a3c8-87933f3c435c" >
+		<http:listener doc:name="Listener" doc:id="62f976be-347c-4d58-a317-f45a69124c6d" config-ref="HTTP_Listener_config" path="/batch-demo"/>
+		<logger level="INFO" doc:name="Start Logger" doc:id="6dd760b7-8656-4d68-8e99-790b6bee6787" message="the flow has started"/>
+		<db:select doc:name="select EMP" doc:id="99eaf303-82f6-428e-b39c-b5b7fa6e76f1" config-ref="Database_Config">
+			<db:sql ><![CDATA[select m.emp_id, m.emp_name, m.emp_status,
+f.emp_exp,f.emp_salary,f.emp_desig, f.emp_age,
+a.emp_appr_year,a.emp_appr_per from
+onboard.emp_master as m,
+onboard.emp_fin_master as f,
+onboard.emp_appr_master as a
+where f.emp_id = a.emp_id and a.emp_id = m.emp_id]]></db:sql>
+		</db:select>
+		<batch:job jobName="batch-demoBatch_Job" doc:id="2821135d-2336-4c26-87ec-f2f77f8dbd8a" blockSize="3">
+			<batch:process-records >
+				<batch:step name="Batch_Step" doc:id="e43f6d64-c565-4e51-aeac-5101ad9f485f" >
+					<ee:transform doc:name="Prepare Employee Records" doc:id="8514a58c-b68c-4bcc-a999-f32a775804a0" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	empID: payload.emp_id,
+	empName: payload.emp_name,
+	empStatus: payload.emp_status,
+	empExperience: payload.emp_exp,
+	empSalary: (payload.emp_salary + (payload.emp_salary * payload.emp_appr_per)/100),
+	empDesignation: payload.emp_desig,
+	empAge: payload.emp_age,
+	empYear: payload.emp_appr_year,
+	empAppr: payload.emp_appr_per
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+						</ee:variables>
+					</ee:transform>
+					<batch:aggregator doc:name="Batch Aggregator" doc:id="5cbea5ba-4434-4431-b920-387b54db2842" size="3">
+						<set-variable value="#[payload]" doc:name="Set Variable" doc:id="94994a80-e2b4-47e7-be12-9fa81db59238" variableName="employeePayload"/>
+						<db:bulk-insert doc:name="Bulk insert into backup_emp-table" doc:id="742f7629-e4b9-484a-a334-124209dda744" config-ref="Database_Config" >
+							<db:bulk-input-parameters ><![CDATA[#[vars.employeePayload]]]></db:bulk-input-parameters>
+							<db:sql ><![CDATA[insert into onboard.emp_backup
+(emp_id,
+emp_name,
+emp_status,
+emp_exp,
+emp_salary,
+emp_desig,
+emp_age,
+emp_appr_year,
+emp_appr_per) values (:empID, :empName,:empStatus,:empExperience,:empSalary,:empDesignation,:empAge,:empYear,:empAppr)]]></db:sql>
+						</db:bulk-insert>
+						<db:bulk-update doc:name="Bulk update" doc:id="44826829-8c98-4b71-a893-cda4639fbb24" config-ref="Database_Config" >
+							<db:bulk-input-parameters ><![CDATA[#[vars.employeePayload]]]></db:bulk-input-parameters>
+							<db:sql ><![CDATA[update onboard.emp_fin_master set emp_salary = :empSalary where emp_id = :empID]]></db:sql>
+						</db:bulk-update>
+					</batch:aggregator>
+				</batch:step>
+			</batch:process-records>
+			<batch:on-complete >
+				<logger level="INFO" doc:name="Logger" doc:id="ea47c897-7e09-4d31-9444-d8820e55b1dc" message='"payload at oncomplete phase:"#[payload]'/>
+			</batch:on-complete>
+		</batch:job>
+		<ee:transform doc:name="Transform Message" doc:id="81e3a82d-27d5-4e7c-8230-5999a1a64f4b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status":200,
+	"message": "sucess"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="End Logger" doc:id="18bba8ed-6fe3-40e0-92e9-f4a469e8be07" message="the flow has ended"/>
+	</flow>
+</mule>

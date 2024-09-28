@@ -1,0 +1,14 @@
+%dw 2.0
+
+type auto_7e2f90ba_e3e2_4f3f_b50d_92c309453d5a_Input_Variables_employeePayload = {|
+  empID?: String, 
+  empStatus?: String, 
+  empDesignation?: String, 
+  empAppr?: String, 
+  empName?: String, 
+  empSalary?: String, 
+  empExperience?: String, 
+  empAge?: String, 
+  empYear?: String
+|}
+
